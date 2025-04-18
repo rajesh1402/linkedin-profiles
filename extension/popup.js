@@ -24,8 +24,16 @@ function renderProfiles(profiles) {
         avatarUrl = chrome.runtime.getURL('icon32.png');
       } catch { avatarUrl = 'icon32.png'; }
     }
-    card.innerHTML = `
-      <img src="${avatarUrl}" class="profile-avatar">
+    // Create avatar image via JS for CSP compliance
+    const avatarImg = document.createElement('img');
+    avatarImg.src = avatarUrl;
+    avatarImg.className = 'profile-avatar';
+    avatarImg.onerror = function() {
+      this.onerror = null;
+      this.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect width="100%" height="100%" fill="#ccc"/></svg>';
+    };
+    card.appendChild(avatarImg);
+    card.innerHTML += `
       <div class="profile-info">
         <div class="profile-name">${profile.name}</div>
         <div class="profile-headline">${profile.headline}</div>

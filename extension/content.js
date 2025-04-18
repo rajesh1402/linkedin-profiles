@@ -69,7 +69,30 @@
     debug('Injecting floating button');
     const floatBtn = document.createElement('button');
     floatBtn.id = 'profile-saver-float-btn';
-    floatBtn.innerHTML = `<img id="profile-saver-float-img" src="${chrome.runtime.getURL('icon32.png')}" style="width:24px;height:24px;vertical-align:middle;margin-right:8px;" onerror="console.error('[DEBUG] Floating button logo failed to load:', this.src)"><span id="profile-saver-count">...</span><span id="profile-saver-float-spinner" style="display:none;margin-left:8px;vertical-align:middle;"><svg width="22" height="22" viewBox="0 0 50 50"><circle cx="25" cy="25" r="20" fill="none" stroke="#0073b1" stroke-width="5" stroke-linecap="round" stroke-dasharray="31.4 31.4" transform="rotate(-90 25 25)"><animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="0.8s" repeatCount="indefinite"/></circle></svg></span>`;
+    // Create logo image via JS for CSP compliance
+    const floatImg = document.createElement('img');
+    floatImg.id = 'profile-saver-float-img';
+    floatImg.src = chrome.runtime.getURL('icon32.png');
+    floatImg.style.width = '24px';
+    floatImg.style.height = '24px';
+    floatImg.style.verticalAlign = 'middle';
+    floatImg.style.marginRight = '8px';
+    floatImg.onerror = function() {
+      this.onerror = null;
+      this.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><rect width="100%" height="100%" fill="#ccc"/></svg>';
+    };
+    const countSpan = document.createElement('span');
+    countSpan.id = 'profile-saver-count';
+    countSpan.textContent = '...';
+    const spinnerSpan = document.createElement('span');
+    spinnerSpan.id = 'profile-saver-float-spinner';
+    spinnerSpan.style.display = 'none';
+    spinnerSpan.style.marginLeft = '8px';
+    spinnerSpan.style.verticalAlign = 'middle';
+    spinnerSpan.innerHTML = '<svg width="22" height="22" viewBox="0 0 50 50"><circle cx="25" cy="25" r="20" fill="none" stroke="#0073b1" stroke-width="5" stroke-linecap="round" stroke-dasharray="31.4 31.4" transform="rotate(-90 25 25)"><animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="0.8s" repeatCount="indefinite"/></circle></svg>';
+    floatBtn.appendChild(floatImg);
+    floatBtn.appendChild(countSpan);
+    floatBtn.appendChild(spinnerSpan);
     floatBtn.style.position = 'fixed';
     floatBtn.style.top = '50%';
     floatBtn.style.right = '0';
@@ -92,7 +115,6 @@
     floatBtn.onmouseleave = () => floatBtn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.10)';
     floatBtn.onclick = togglePopup;
     document.body.appendChild(floatBtn);
-    floatBtn.querySelector('img').addEventListener('error', () => debug('Floating button logo failed to load'));
     showFloatingButtonSpinner(true);
     updateFloatingButtonCount();
   }
@@ -129,12 +151,25 @@
     }
     // Robust profile_pic extraction (improved selectors and fallback)
     let profilePic = '';
-    // 1. Try main profile image (top card, circular image)
-    const mainImg = document.querySelector('.pv-top-card-profile-picture__image, .profile-photo-edit__preview img, .pv-top-card__photo, img[alt*="profile" i], img[alt*="photo" i]');
+    // 1. Try the most specific: <img> inside the profile picture button/container
+    let mainImg = document.querySelector('.pv-top-card-profile-picture__container img');
+    if (!mainImg) {
+      // 2. Try the --show class (sometimes LinkedIn changes this)
+      mainImg = document.querySelector('.pv-top-card-profile-picture__image--show');
+    }
+    if (!mainImg) {
+      // 3. Try all previous selectors as fallback
+      mainImg = document.querySelector(
+        '.pv-top-card-profile-picture__image, ' +
+        '.profile-photo-edit__preview img, ' +
+        '.pv-top-card__photo, ' +
+        'img[alt*="profile" i], img[alt*="photo" i]'
+      );
+    }
     if (mainImg && mainImg.src && !mainImg.src.includes('ghost') && !mainImg.src.includes('default')) {
       profilePic = mainImg.src;
     }
-    // 2. Fallback: og:image meta, but skip generic backgrounds
+    // 4. Fallback: og:image meta, but skip generic backgrounds
     if (!profilePic) {
       const meta = document.querySelector('meta[property="og:image"]');
       if (meta && meta.content && !/linkedin.*background|shrink_/.test(meta.content)) {
@@ -152,26 +187,35 @@
     btn.innerText = 'Saving...';
     btn.disabled = true;
     const profile = extractProfile();
-    chrome.runtime.sendMessage({ type: 'save_profile', profile }, (response) => {
-      debug('Save profile response', response);
-      if (response && response.success) {
-        btn.innerText = 'Saved!';
-        updateFloatingButtonCount();
-        if (document.getElementById('profile-saver-popup')) {
-          fetchAndRenderPopupProfiles();
+    if (window.chrome && chrome.runtime && chrome.runtime.sendMessage) {
+      chrome.runtime.sendMessage({ type: 'save_profile', profile }, (response) => {
+        debug('Save profile response', response);
+        if (response && response.success) {
+          btn.innerText = 'Saved!';
+          updateFloatingButtonCount();
+          if (document.getElementById('profile-saver-popup')) {
+            fetchAndRenderPopupProfiles();
+          }
+          setTimeout(() => {
+            btn.innerText = 'Save to Database';
+            btn.disabled = false;
+          }, 2000);
+        } else {
+          btn.innerText = 'Error!';
+          setTimeout(() => {
+            btn.innerText = 'Save to Database';
+            btn.disabled = false;
+          }, 2000);
         }
-        setTimeout(() => {
-          btn.innerText = 'Save to Database';
-          btn.disabled = false;
-        }, 2000);
-      } else {
-        btn.innerText = 'Error!';
-        setTimeout(() => {
-          btn.innerText = 'Save to Database';
-          btn.disabled = false;
-        }, 2000);
-      }
-    });
+      });
+    } else {
+      debug('chrome.runtime.sendMessage is not available in this context');
+      btn.innerText = 'Error!';
+      setTimeout(() => {
+        btn.innerText = 'Save to Database';
+        btn.disabled = false;
+      }, 2000);
+    }
   }
 
   // --- Patch popup fetch to show error state ---
@@ -290,17 +334,26 @@
 
   function updateFloatingButtonCount() {
     showFloatingButtonSpinner(true);
-    chrome.runtime.sendMessage({ type: 'get_count' }, (response) => {
-      debug('Fetched saved profiles count', response);
-      document.getElementById('profile-saver-count').innerText = response && response.count !== undefined ? response.count : '0';
+    if (window.chrome && chrome.runtime && chrome.runtime.sendMessage) {
+      chrome.runtime.sendMessage({ type: 'get_count' }, (response) => {
+        debug('Fetched saved profiles count', response);
+        document.getElementById('profile-saver-count').innerText = response && response.count !== undefined ? response.count : '0';
+        showFloatingButtonSpinner(false);
+      });
+    } else {
+      debug('chrome.runtime.sendMessage is not available in this context');
       showFloatingButtonSpinner(false);
-    });
+    }
   }
 
   // Listen for count update requests from background
-  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (msg.type === 'update_count') updateFloatingButtonCount();
-  });
+  if (window.chrome && chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+      if (msg.type === 'update_count') updateFloatingButtonCount();
+    });
+  } else {
+    debug('chrome.runtime.onMessage is not available in this context');
+  }
 
   // --- Wait for DOM ready and inject buttons ---
   (function() {

@@ -16,6 +16,15 @@
 
 ---
 
+**Setup Note:**
+- Use a Python virtual environment when installing dependencies for the backend (FastAPI, database, etc.).
+  - Example:
+    ```sh
+    python -m venv venv
+    source venv/bin/activate  # On Windows: venv\Scripts\activate
+    pip install -r api/requirements.txt
+    ```
+
 ## I. API Backend (FastAPI + Postgres/Neon)
 
 ### A. Core Features
