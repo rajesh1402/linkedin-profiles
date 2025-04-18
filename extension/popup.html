@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Saved LinkedIn Profiles</title>
+  <link rel="stylesheet" href="content.css">
+</head>
+<body>
+  <div id="profile-saver-popup">
+    <header>
+      <img id="profile-saver-popup-logo" src="icon32.png" style="width:32px;height:32px;vertical-align:middle;border-radius:6px;box-shadow:0 2px 6px #0001;object-fit:contain;margin-right:10px;">
+      <span id="profile-saver-popup-count">...</span>
+    </header>
+    <div id="profile-saver-list"></div>
+    <div id="profile-saver-empty" style="display:none;">No profiles saved yet.</div>
+    <div id="profile-saver-error" style="display:none;color:red;">Error loading profiles.</div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
