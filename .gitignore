@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment
+.env
+*.env
+
+# Node
+node_modules/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# VSCode
+.vscode/
+
+# Misc
+*.swp
+*.swo
+
+# Chrome Extension build artifacts
+*.crx
+*.pem
+
+# Database
+*.sqlite3
+*.db
+*.db-journal
+
+# Test output
+coverage/
+
+# Ignore local settings
+settings.json
