@@ -12,7 +12,7 @@
   ],
   "host_permissions": [
     "https://www.linkedin.com/in/*",
-    "http://localhost:8000/*"
+    "http://127.0.0.1:8000/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -38,5 +38,12 @@
     "32": "icon32.png",
     "48": "icon48.png",
     "128": "icon128.png"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/TS_logo.jpg"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+
 }

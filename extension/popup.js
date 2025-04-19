@@ -1,5 +1,5 @@
 // Handles popup UI and profile listing
-const API_URL = 'http://localhost:8000/profiles';
+const API_URL = 'http://127.0.0.1:8000/profiles';
 
 function debug(msg, ...args) {
   console.debug('[ProfileSaver][POPUP]', msg, ...args);
@@ -79,4 +79,43 @@ function deleteProfile(id) {
     });
 }
 
-document.addEventListener('DOMContentLoaded', fetchProfiles);
+// Add Save button logic for popup
+function saveCurrentProfileFromPopup() {
+  // Request profile extraction from content script
+  if (window.chrome && chrome.tabs && chrome.runtime) {
+    chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
+      if (!tabs || !tabs[0] || !tabs[0].id) return;
+      chrome.tabs.sendMessage(tabs[0].id, { type: 'extract_profile' }, function(profile) {
+        if (profile && profile.name) {
+          chrome.runtime.sendMessage({ type: 'save_profile', profile }, function(response) {
+            if (response && response.success) {
+              renderProfilesFromAPI();
+            } else {
+              alert('Failed to save profile.');
+            }
+          });
+        } else {
+          alert('Could not extract profile. Make sure you are on a LinkedIn profile page.');
+        }
+      });
+    });
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  fetchProfiles();
+  const saveBtn = document.getElementById('profile-saver-save-btn');
+  if (saveBtn) {
+    saveBtn.onclick = saveCurrentProfileFromPopup;
+  }
+});
+
+// Helper to refresh profiles after save
+function renderProfilesFromAPI() {
+  fetch(API_URL)
+    .then(r => r.json())
+    .then(renderProfiles)
+    .catch(() => {
+      document.getElementById('profile-saver-error').style.display = 'block';
+    });
+}

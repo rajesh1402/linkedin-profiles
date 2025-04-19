@@ -1,5 +1,5 @@
 // Handles backend requests and extension messaging
-const API_URL = 'http://localhost:8000/profiles';
+const API_URL = 'http://127.0.0.1:8000/profiles';
 
 function debug(msg, ...args) {
   console.debug('[ProfileSaver][BG]', msg, ...args);

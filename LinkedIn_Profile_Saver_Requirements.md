@@ -331,4 +331,22 @@
 
 *Last updated: April 18, 2025 — UI/UX overhaul for floating button and popup implemented.*
 
+---
+
+**Chrome Extension Logo Handling (IMPORTANT):**
+- If you want to use custom images (e.g., a logo) in your popup or floating button, and reference them from content scripts or dynamically in JS, you MUST declare them in `web_accessible_resources` in `manifest.json`:
+
+```json
+"web_accessible_resources": [
+  {
+    "resources": ["assets/TS_logo.jpg"],
+    "matches": ["<all_urls>"]
+  }
+]
+```
+- Without this, images like `assets/TS_logo.jpg` will NOT load in content scripts or dynamic extension UIs.
+- Always use `chrome.runtime.getURL('assets/TS_logo.jpg')` in JS for robust loading.
+
+---
+
 **This document is ready to be shared with any developer, designer, or team to build your project to a high standard!**
