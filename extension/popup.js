@@ -39,6 +39,8 @@ function renderProfiles(profiles) {
         <div class="profile-headline">${profile.headline}</div>
         <div class="profile-title">${profile.current_title}</div>
         <div class="profile-location">${profile.location}</div>
+        ${profile.about ? `<div class="profile-about">${profile.about.replace(/\n/g, '<br>')}</div>` : ''}
+        ${profile.notes ? `<div class="profile-notes"><b>Notes:</b> ${profile.notes.replace(/\n/g, '<br>')}</div>` : ''}
       </div>
       <button class="profile-delete" aria-label="Delete" title="Delete">&times;</button>
     `;
@@ -87,8 +89,12 @@ function saveCurrentProfileFromPopup() {
       if (!tabs || !tabs[0] || !tabs[0].id) return;
       chrome.tabs.sendMessage(tabs[0].id, { type: 'extract_profile' }, function(profile) {
         if (profile && profile.name) {
+          // Attach notes from textarea
+          const notes = document.getElementById('profile-saver-notes')?.value?.trim() || '';
+          profile.notes = notes;
           chrome.runtime.sendMessage({ type: 'save_profile', profile }, function(response) {
             if (response && response.success) {
+              document.getElementById('profile-saver-notes').value = '';
               renderProfilesFromAPI();
             } else {
               alert('Failed to save profile.');

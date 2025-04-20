@@ -46,7 +46,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       debug('Show popup requested');
       try { chrome.action.openPopup(); } catch (e) { debug('No receiving end for openPopup', e); }
     }
+    // Always return true for async sendResponse
+    return true;
   } catch (e) {
     debug('Error handling message in background.js', e);
+    return true;
   }
 });

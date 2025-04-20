@@ -44,7 +44,17 @@
     // Create logo image via JS for CSP compliance
     const floatImg = document.createElement('img');
     floatImg.id = 'profile-saver-float-img';
-    floatImg.src = chrome.runtime.getURL('assets/TS_logo.jpg');
+    // Defensive: wrap chrome.runtime.getURL in try/catch in case context is lost
+    try {
+      if (window.chrome && chrome.runtime && chrome.runtime.getURL) {
+        floatImg.src = chrome.runtime.getURL('assets/TS_logo.jpg');
+      } else {
+        throw new Error('No chrome.runtime.getURL');
+      }
+    } catch (e) {
+      // fallback: blank image or placeholder SVG
+      floatImg.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><rect width="100%" height="100%" fill="#ccc"/></svg>';
+    }
     floatImg.style.width = '24px';
     floatImg.style.height = '24px';
     floatImg.style.verticalAlign = 'middle';
@@ -100,6 +110,39 @@
     }
   }
 
+  // --- About Section Extraction (Modern LinkedIn DOM) ---
+  function extractAboutSection() {
+    // 1. Find all <section> elements
+    const sections = document.querySelectorAll('section');
+    for (let section of sections) {
+      // 2. Find <h2> with a <span aria-hidden="true">About</span>
+      const h2s = section.querySelectorAll('h2');
+      for (let h2 of h2s) {
+        const aboutSpan = h2.querySelector('span[aria-hidden="true"]');
+        if (
+          aboutSpan &&
+          aboutSpan.textContent.trim().toLowerCase() === 'about'
+        ) {
+          // 3. Try expanded first, then collapsed
+          let expandedDiv = section.querySelector('div.inline-show-more-text--is-expanded');
+          if (!expandedDiv) {
+            expandedDiv = section.querySelector('div.inline-show-more-text--is-collapsed');
+          }
+          if (expandedDiv) {
+            const span = expandedDiv.querySelector('span[aria-hidden="true"]');
+            if (span) {
+              let aboutHtml = span.innerHTML;
+              let aboutText = aboutHtml.replace(/<br\s*\/?>(\n)?/gi, '\n');
+              aboutText = aboutText.replace(/<[^>]+>/g, '').trim();
+              return aboutText;
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   // Extract profile info from DOM (robust for experience/current_title and profile_pic)
   function extractProfile() {
     const name = document.querySelector('h1.inline.t-24.v-align-middle.break-words')?.innerText.trim() || document.querySelector('h1')?.innerText.trim() || '';
@@ -109,48 +152,52 @@
     
     // Robust current_title extraction (first experience title)
     let currentTitle = '';
-    const expSection = document.getElementById('experience');
+    const expSection = document.querySelector('section.pv-profile-section.experience-section') || document.querySelector('section[data-section="experience-section"]');
     if (expSection) {
-      const titleSpan = expSection.parentElement?.querySelector('.mr1.hoverable-link-text.t-bold span[aria-hidden="true"]');
-      if (titleSpan && titleSpan.innerText.trim()) {
-        currentTitle = titleSpan.innerText.trim();
-      } else {
-        const fallbackTitle = expSection.parentElement?.querySelector('.t-bold span[aria-hidden="true"]');
-        if (fallbackTitle && fallbackTitle.innerText.trim()) {
-          currentTitle = fallbackTitle.innerText.trim();
-        }
+      const firstExp = expSection.querySelector('.pv-position-entity .t-16.t-black.t-bold') || expSection.querySelector('.t-14.t-black.t-bold');
+      if (firstExp) currentTitle = firstExp.innerText.trim();
+    }
+    if (!currentTitle) {
+      // Try summary card current position
+      const pos = document.querySelector('.text-body-medium.break-words')?.innerText.trim();
+      if (pos) currentTitle = pos;
+    }
+    // --- Finalized About extraction for new LinkedIn DOM ---
+    const aboutText = extractAboutSection();
+    let profilePic = '';
+    // Try legacy selectors first
+    let mainImg = document.querySelector('.pv-top-card-profile-picture__image');
+    if (!mainImg) {
+      // Try new LinkedIn class (from user sample)
+      mainImg = document.querySelector('img.pv-top-card-profile-picture__image--show');
+    }
+    if (!mainImg) {
+      // Try any <img> inside the profile picture container (robust fallback)
+      const container = document.querySelector('.pv-top-card-profile-picture__container');
+      if (container) {
+        mainImg = container.querySelector('img');
       }
     }
-    // Robust profile_pic extraction (improved selectors and fallback)
-    let profilePic = '';
-    // 1. Try the most specific: <img> inside the profile picture button/container
-    let mainImg = document.querySelector('.pv-top-card-profile-picture__container img');
     if (!mainImg) {
-      // 2. Try the --show class (sometimes LinkedIn changes this)
-      mainImg = document.querySelector('.pv-top-card-profile-picture__image--show');
+      // Try other legacy selectors
+      mainImg = document.querySelector('.profile-photo-edit__preview') ||
+                document.querySelector('img.pv-top-card-profile-picture__image') ||
+                document.querySelector('.pv-top-card__photo') ||
+                document.querySelector('.profile-photo-edit__preview img');
     }
-    if (!mainImg) {
-      // 3. Try all previous selectors as fallback
-      mainImg = document.querySelector(
-        '.pv-top-card-profile-picture__image, ' +
-        '.profile-photo-edit__preview img, ' +
-        '.pv-top-card__photo, ' +
-        'img[alt*="profile" i], img[alt*="photo" i]'
-      );
-    }
-    if (mainImg && mainImg.src && !mainImg.src.includes('ghost') && !mainImg.src.includes('default')) {
+    if (mainImg && mainImg.src) {
       profilePic = mainImg.src;
     }
-    // 4. Fallback: og:image meta, but skip generic backgrounds
+    // Fallback: og:image meta
     if (!profilePic) {
       const meta = document.querySelector('meta[property="og:image"]');
-      if (meta && meta.content && !/linkedin.*background|shrink_/.test(meta.content)) {
+      if (meta && meta.content) {
         profilePic = meta.content;
       }
     }
     debug('Profile pic candidate:', profilePic);
-    debug('Extracted profile fields', { name, headline, url, currentTitle, location, profilePic });
-    return { name, headline, url, current_title: currentTitle, location, profile_pic: profilePic };
+    debug('Extracted profile fields', { name, headline, url, currentTitle, location, profilePic, about: aboutText });
+    return { name, headline, url, current_title: currentTitle, location, profile_pic: profilePic, about: aboutText };
   }
 
   // Handle Save button click
@@ -309,7 +356,17 @@
     logoHeaderDiv.style.alignItems = 'center';
     logoHeaderDiv.style.marginBottom = '10px';
     const logoImg = document.createElement('img');
-    logoImg.src = chrome.runtime.getURL('assets/TS_logo.jpg');
+    // Defensive: wrap chrome.runtime.getURL in try/catch in case context is lost
+    try {
+      if (window.chrome && chrome.runtime && chrome.runtime.getURL) {
+        logoImg.src = chrome.runtime.getURL('assets/TS_logo.jpg');
+      } else {
+        throw new Error('No chrome.runtime.getURL');
+      }
+    } catch (e) {
+      // fallback: blank image or placeholder SVG
+      logoImg.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="100%" height="100%" fill="#ccc"/></svg>';
+    }
     logoImg.style.width = '32px';
     logoImg.style.height = '32px';
     logoImg.style.borderRadius = '6px';
@@ -394,30 +451,49 @@
     const saveBtn = document.createElement('button');
     saveBtn.id = 'profile-saver-save-btn';
     saveBtn.innerText = 'Save';
+    saveBtn.style.display = 'block';
+    saveBtn.style.width = '100%';
+    saveBtn.style.margin = '18px 0 0 0';
     saveBtn.style.background = '#0a66c2';
     saveBtn.style.color = '#fff';
     saveBtn.style.border = 'none';
-    saveBtn.style.borderRadius = '999px';
+    saveBtn.style.borderRadius = '12px';
     saveBtn.style.padding = '10px 0';
-    saveBtn.style.fontSize = '16px';
     saveBtn.style.fontWeight = 'bold';
+    saveBtn.style.fontSize = '19px';
     saveBtn.style.cursor = 'pointer';
     saveBtn.style.boxShadow = '0 2px 8px #0073b133';
-    saveBtn.style.margin = '0 0 18px 0';
-    saveBtn.style.width = '100%';
-    saveBtn.style.transition = 'background 0.18s';
     saveBtn.onmouseover = function() { this.style.background = '#004182'; };
     saveBtn.onmouseout = function() { this.style.background = '#0a66c2'; };
+
+    // Notes textarea below Save button
+    const notesInput = document.createElement('textarea');
+    notesInput.id = 'profile-saver-notes';
+    notesInput.placeholder = 'Add notes (optional)';
+    notesInput.style.width = '98%';
+    notesInput.style.minHeight = '48px';
+    notesInput.style.resize = 'vertical';
+    notesInput.style.margin = '12px 0 0 0';
+    notesInput.style.padding = '6px 10px';
+    notesInput.style.borderRadius = '8px';
+    notesInput.style.border = '1px solid #d1d1d1';
+    notesInput.style.fontSize = '15px';
+
+    // Attach save logic
     saveBtn.onclick = function() {
       // Extract profile and save
       const profile = extractProfile();
       if (profile && profile.name) {
+        const notes = notesInput.value.trim();
+        profile.notes = notes;
         saveBtn.innerText = 'Saving...';
         saveBtn.disabled = true;
         chrome.runtime.sendMessage({ type: 'save_profile', profile }, function(response) {
           if (response && response.success) {
             saveBtn.innerText = 'Saved!';
+            notesInput.value = '';
             fetchAndRenderPopupProfiles();
+            updateFloatingButtonCount();
             setTimeout(() => {
               saveBtn.innerText = 'Save';
               saveBtn.disabled = false;
@@ -438,12 +514,9 @@
         }, 1200);
       }
     };
-    const saveBtnWrap = document.createElement('div');
-    saveBtnWrap.style.width = '100%';
-    saveBtnWrap.style.display = 'flex';
-    saveBtnWrap.style.justifyContent = 'center';
-    saveBtnWrap.appendChild(saveBtn);
-    popup.appendChild(saveBtnWrap);
+
+    popup.appendChild(notesInput);
+    popup.appendChild(saveBtn);
 
     // --- Saved Profiles Section ---
     const savedHeading = document.createElement('div');
@@ -468,8 +541,13 @@
     showFloatingButtonSpinner(true);
     if (window.chrome && chrome.runtime && chrome.runtime.sendMessage) {
       chrome.runtime.sendMessage({ type: 'get_count' }, (response) => {
-        debug('Fetched saved profiles count', response);
-        document.getElementById('profile-saver-count').innerText = response && response.count !== undefined ? response.count : '0';
+        if (response && typeof response.count === 'number') {
+          debug('Fetched saved profiles count', response);
+          document.getElementById('profile-saver-count').innerText = response.count;
+        } else {
+          debug('Fetched saved profiles count (fallback)', response);
+          document.getElementById('profile-saver-count').innerText = '0';
+        }
         showFloatingButtonSpinner(false);
       });
     } else {

@@ -7,6 +7,8 @@ class ProfileBase(BaseModel):
     current_title: str
     location: str
     profile_pic: str | None = None
+    about: str | None = None
+    notes: str | None = None
 
 class ProfileCreate(ProfileBase):
     pass

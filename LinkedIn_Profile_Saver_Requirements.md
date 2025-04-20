@@ -13,6 +13,7 @@
 - 2025-04-18: All backend automated and manual tests passed with Neon. Backend is complete and verified. Proceeding to Chrome extension implementation (Manifest V3, content/background scripts, UI).
 - 2025-04-18: Created an `extension` folder for the Chrome extension codebase. Scaffolded Manifest V3 config, background/content scripts, popup UI, and CSS. All extension code is organized and store-ready, matching requirements for modularity and maintainability.
 - 2025-04-18: Added detailed debug statements to all Chrome extension scripts (content, background, popup) for easy troubleshooting and to log all field extraction and backend interactions. All logs are clearly prefixed (`[ProfileSaver]`, `[BG]`, `[POPUP]`) for easy filtering in the Chrome DevTools console.
+- 2025-04-19: Updated backend to support optional 'about' and 'notes' fields in the profile model, API endpoints, and DB. Added migration note about short hex revision IDs and manual sync if needed.
 
 ---
 
@@ -30,17 +31,17 @@
 ### A. Core Features
 1. **RESTful API** using FastAPI.
 2. **Endpoints:**
-   - `POST /profiles`: Save a LinkedIn profile (fields: name, headline, url, current_title, location, profile_pic).
-   - `GET /profiles`: List all saved profiles.
+   - `POST /profiles`: Save a LinkedIn profile (fields: name, headline, url, current_title, location, profile_pic, about, notes).
+   - `GET /profiles`: List all saved profiles, including `about` and `notes`.
    - `DELETE /profiles/{profile_id}`: Delete a profile by ID.
 
 3. **Database:**
    - Use Postgres (Neon or local) for storage.
    - ORM: SQLAlchemy.
-   - Profile model includes: `id`, `name`, `headline`, `url` (unique), `current_title`, `location`, `profile_pic`.
+   - Profile model includes: `id`, `name`, `headline`, `url` (unique), `current_title`, `location`, `profile_pic`, `about` (optional), `notes` (optional, user-supplied).
 
 4. **Data Validation:**
-   - Use Pydantic models for request/response validation.
+   - Use Pydantic models for request/response validation. All endpoints accept and return the new `about` and `notes` fields as optional strings.
 
 5. **CORS:**
    - Allow requests from the Chrome extension and localhost for development.
@@ -54,6 +55,9 @@
 1. **Migrations:**
    - Use Alembic for DB migrations.
    - Provide migration scripts for initial schema and any changes (e.g., `profile_pic` field).
+   - All migration scripts now use short hex revision IDs (max 32 chars) for compatibility with Postgres.
+   - The migration chain is: initial table creation → add `about` and `notes` columns.
+   - If columns are added manually, always update the `alembic_version` table accordingly.
 
 2. **Seeding:**
    - Provide a script to seed the database with example LinkedIn profiles.
@@ -343,10 +347,3 @@
     "matches": ["<all_urls>"]
   }
 ]
-```
-- Without this, images like `assets/TS_logo.jpg` will NOT load in content scripts or dynamic extension UIs.
-- Always use `chrome.runtime.getURL('assets/TS_logo.jpg')` in JS for robust loading.
-
----
-
-**This document is ready to be shared with any developer, designer, or team to build your project to a high standard!**

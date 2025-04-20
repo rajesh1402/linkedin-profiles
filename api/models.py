@@ -10,3 +10,5 @@ class Profile(Base):
     current_title = Column(String, nullable=False)
     location = Column(String, nullable=False)
     profile_pic = Column(String, nullable=True)
+    about = Column(String, nullable=True)
+    notes = Column(String, nullable=True)

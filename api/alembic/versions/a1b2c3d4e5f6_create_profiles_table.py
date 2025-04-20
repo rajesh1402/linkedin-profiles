@@ -1,5 +1,5 @@
 """
-Revision ID: 20250418_create_profiles_table
+Revision ID: a1b2c3d4e5f6
 Revises: 
 Create Date: 2025-04-18
 """
@@ -7,7 +7,7 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision = '20250418_create_profiles_table'
+revision = 'a1b2c3d4e5f6'
 down_revision = None
 branch_labels = None
 depends_on = None
