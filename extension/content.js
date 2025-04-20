@@ -59,6 +59,7 @@
     floatImg.style.height = '24px';
     floatImg.style.verticalAlign = 'middle';
     floatImg.style.marginRight = '8px';
+    floatImg.style.objectFit = 'contain';
     floatImg.onerror = function() {
       this.onerror = null;
       this.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><rect width="100%" height="100%" fill="#ccc"/></svg>';
@@ -95,7 +96,7 @@
     floatBtn.style.transition = 'box-shadow 0.2s';
     floatBtn.onmouseenter = () => floatBtn.style.boxShadow = '0 4px 16px rgba(0,0,0,0.18)';
     floatBtn.onmouseleave = () => floatBtn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.10)';
-    floatBtn.onclick = togglePopup;
+    floatBtn.onclick = robustTogglePopup;
     document.body.appendChild(floatBtn);
     showFloatingButtonSpinner(true);
     updateFloatingButtonCount();
@@ -247,36 +248,134 @@
       })
       .then(profiles => {
         debug('Fetched profiles for popup', profiles);
-        // Only update the profiles list, not the whole popup content
         const listDiv = document.getElementById('profile-saver-list');
         if (!listDiv) return;
-        if (profiles && profiles.length > 0) {
-          listDiv.innerHTML = `
-            <div style="margin-bottom:16px;font-size:15px;color:#222;">Below are all profiles saved from LinkedIn:</div>
-            <div style="margin-bottom:0;">
-              ${profiles.map(p => `
-                <div class="profile-saver-card" style="background:#f3f6f8;border:1px solid #e0e0e0;padding:10px 14px 10px 14px;border-radius:12px;margin-bottom:14px;display:flex;align-items:center;position:relative;">
-                  <img src="${p.profile_pic ? p.profile_pic : 'https://ui-avatars.com/api/?name=' + encodeURIComponent(p.name||'P') }" style="width:46px;height:46px;border-radius:50%;margin-right:15px;object-fit:cover;">
-                  <div style="flex:1;">
-                    <div style="font-weight:600;font-size:18px;">${p.name||''}</div>
-                    <div style="font-size:15px;color:#555;margin-bottom:2px;">${p.headline||''}</div>
-                    <div style="font-size:13px;color:#888;margin-bottom:2px;">${p.current_title||''}</div>
-                    <div style="font-size:13px;color:#888;">${p.location||''}</div>
+
+        // --- Inline Search + Sort Icon Button ---
+        const searchSortRow = document.createElement('div');
+        searchSortRow.style.display = 'flex';
+        searchSortRow.style.alignItems = 'center';
+        searchSortRow.style.gap = '8px';
+        searchSortRow.style.margin = '6px 0 12px 0';
+
+        // Search bar (reduced width)
+        const searchBar = document.createElement('input');
+        searchBar.type = 'text';
+        searchBar.id = 'profile-saver-search';
+        searchBar.placeholder = 'Search by name, title, or location...';
+        searchBar.style.flex = '1';
+        searchBar.style.minWidth = '0';
+        searchBar.style.width = '0';
+        searchBar.style.maxWidth = '250px';
+        searchBar.style.padding = '7px 12px';
+        searchBar.style.fontSize = '15px';
+        searchBar.style.border = '1px solid #bbb';
+        searchBar.style.borderRadius = '7px';
+        searchBar.style.display = 'block';
+
+        // Sort icon button
+        const sortBtn = document.createElement('button');
+        sortBtn.id = 'profile-saver-sort-btn';
+        sortBtn.style.background = 'none';
+        sortBtn.style.border = 'none';
+        sortBtn.style.padding = '0 6px';
+        sortBtn.style.margin = '0';
+        sortBtn.style.display = 'flex';
+        sortBtn.style.alignItems = 'center';
+        sortBtn.style.cursor = 'pointer';
+        sortBtn.style.height = '38px';
+        sortBtn.style.width = '36px';
+        sortBtn.style.justifyContent = 'center';
+        sortBtn.style.transition = 'background 0.15s';
+        sortBtn.tabIndex = 0;
+        sortBtn.setAttribute('aria-label', 'Sort by name (A-Z)');
+        sortBtn.title = 'Sort by name (A-Z)';
+        sortBtn.onfocus = () => sortBtn.style.background = '#e7f3fa';
+        sortBtn.onblur = () => sortBtn.style.background = 'none';
+        sortBtn.onmouseover = () => sortBtn.style.background = '#e7f3fa';
+        sortBtn.onmouseout = () => sortBtn.style.background = 'none';
+
+        // SVG for A-Z sort (default)
+        function getSortSVG(order) {
+          if (order === 'az') {
+            return `<svg width="22" height="22" fill="none" xmlns="http://www.w3.org/2000/svg"><text x="4" y="16" font-size="13" font-family="Arial" fill="#222">A</text><text x="15" y="16" font-size="13" font-family="Arial" fill="#222">Z</text><path d="M7 7h8" stroke="#0073b1" stroke-width="2" stroke-linecap="round"/><path d="M11 5v2" stroke="#0073b1" stroke-width="2" stroke-linecap="round"/></svg>`;
+          } else {
+            return `<svg width="22" height="22" fill="none" xmlns="http://www.w3.org/2000/svg"><text x="4" y="16" font-size="13" font-family="Arial" fill="#222">A</text><text x="15" y="16" font-size="13" font-family="Arial" fill="#222">Z</text><path d="M7 15h8" stroke="#0073b1" stroke-width="2" stroke-linecap="round"/><path d="M11 15v2" stroke="#0073b1" stroke-width="2" stroke-linecap="round"/></svg>`;
+          }
+        }
+        let sortOrder = 'az';
+        sortBtn.innerHTML = getSortSVG(sortOrder);
+
+        sortBtn.onclick = function() {
+          sortOrder = sortOrder === 'az' ? 'za' : 'az';
+          sortBtn.innerHTML = getSortSVG(sortOrder);
+          sortBtn.setAttribute('aria-label', sortOrder === 'az' ? 'Sort by name (A-Z)' : 'Sort by name (Z-A)');
+          sortBtn.title = sortOrder === 'az' ? 'Sort by name (A-Z)' : 'Sort by name (Z-A)';
+          renderFilteredProfiles();
+        };
+
+        searchSortRow.appendChild(searchBar);
+        searchSortRow.appendChild(sortBtn);
+        listDiv.parentNode.insertBefore(searchSortRow, listDiv);
+
+        let filteredProfiles = profiles;
+        function renderFilteredProfiles() {
+          const q = searchBar.value.trim().toLowerCase();
+          if (q.length >= 2) {
+            filteredProfiles = profiles.filter(p =>
+              (p.name && p.name.toLowerCase().includes(q)) ||
+              (p.current_title && p.current_title.toLowerCase().includes(q)) ||
+              (p.location && p.location.toLowerCase().includes(q))
+            );
+          } else {
+            filteredProfiles = profiles;
+          }
+          // Sort by name
+          filteredProfiles = filteredProfiles.slice().sort((a, b) => {
+            const nameA = (a.name || '').toLowerCase();
+            const nameB = (b.name || '').toLowerCase();
+            if (sortOrder === 'az') return nameA.localeCompare(nameB);
+            else return nameB.localeCompare(nameA);
+          });
+          if (filteredProfiles.length > 0) {
+            listDiv.innerHTML = `
+              <div style="margin-bottom:16px;font-size:15px;color:#222;">Below are all profiles saved from LinkedIn:</div>
+              <div style="margin-bottom:0;">
+                ${filteredProfiles.map((p, idx) => `
+                  <div class="profile-saver-card" style="background:#f3f6f8;border:1px solid #e0e0e0;padding:10px 14px 10px 14px;border-radius:12px;margin-bottom:14px;display:flex;align-items:center;position:relative;">
+                    <img src="${p.profile_pic ? p.profile_pic : 'https://ui-avatars.com/api/?name=' + encodeURIComponent(p.name||'P') }" style="width:46px;height:46px;border-radius:50%;margin-right:15px;object-fit:cover;">
+                    <div style="flex:1;">
+                      <div style="font-weight:600;font-size:18px;">${p.name||''}</div>
+                      <div style="font-size:15px;color:#555;margin-bottom:2px;">${p.headline||''}</div>
+                      <div style="font-size:13px;color:#888;margin-bottom:2px;">${p.current_title||''}</div>
+                      <div style="font-size:13px;color:#888;">${p.location||''}</div>
+                      <div class="profile-notes-view" data-idx="${idx}" style="margin-top:4px;${p.notes ? '' : 'color:#888;'}">
+                        <b>Notes:</b> ${p.notes ? p.notes.replace(/\n/g, '<br>') : '<span style=\'color:#888\'>(No notes added)</span>'}
+                        <button class="profile-notes-edit-btn" data-idx="${idx}" style="margin-left:8px;font-size:12px;padding:1px 7px 1px 7px;border-radius:5px;border:none;background:#eee;color:#0073b1;cursor:pointer;">Edit</button>
+                      </div>
+                      <div class="profile-notes-edit" data-idx="${idx}" style="display:none;margin-top:4px;">
+                        <textarea class="profile-notes-textarea" style="width:98%;min-height:32px;resize:vertical;border-radius:5px;border:1px solid #bbb;font-size:14px;">${p.notes||''}</textarea>
+                        <button class="profile-notes-save" data-idx="${idx}" style="margin:4px 4px 0 0;">Save</button>
+                        <button class="profile-notes-cancel" data-idx="${idx}" style="margin:4px 0 0 0;">Cancel</button>
+                      </div>
+                    </div>
+                    <button class="profile-delete" aria-label="Delete" title="Delete" data-profile-id="${p.id}"
+                      style="position:absolute;top:6px;right:10px;background:none;border:none;color:#d32f2f;font-size:26px;cursor:pointer;margin:0;line-height:1;font-weight:bold;transition:color 0.2s;user-select:none;"
+                      onmouseover="this.style.color='#b71c1c'" onmouseout="this.style.color='#d32f2f'">
+                      &times;
+                    </button>
                   </div>
-                  <button class="profile-delete" aria-label="Delete" title="Delete" data-profile-id="${p.id}"
-                    style="position:absolute;top:6px;right:10px;background:none;border:none;color:#d32f2f;font-size:26px;cursor:pointer;margin:0;line-height:1;font-weight:bold;transition:color 0.2s;user-select:none;"
-                    onmouseover="this.style.color='#b71c1c'" onmouseout="this.style.color='#d32f2f'">
-                    &times;
-                  </button>
-                </div>
-              `).join('')}
-            </div>
-          `;
-          // Attach delete handlers
-          listDiv.querySelectorAll('.profile-delete').forEach(btn => {
+                `).join('')}
+              </div>
+            `;
+          } else {
+            listDiv.innerHTML = '<div style="text-align:center;font-size:16px;color:#888;margin:30px 0;">No results found.</div>';
+          }
+          // Re-attach handlers for filtered list
+          listDiv.querySelectorAll('.profile-delete').forEach((btn, i) => {
             btn.onclick = async function(e) {
               e.stopPropagation();
-              const id = btn.getAttribute('data-profile-id');
+              const id = filteredProfiles[i].id;
               if (!id) return;
               btn.disabled = true;
               btn.innerText = '...';
@@ -294,13 +393,90 @@
               setTimeout(() => { btn.innerText = '×'; btn.disabled = false; }, 1500);
             };
           });
-        } else {
-          listDiv.innerHTML = '<div style="text-align:center;font-size:16px;color:#888;margin:30px 0;">No profiles saved yet.</div>';
+          listDiv.querySelectorAll('.profile-notes-edit-btn').forEach((btn, i) => {
+            btn.onclick = function() {
+              const idx = btn.getAttribute('data-idx');
+              const viewDiv = listDiv.querySelector('.profile-notes-view[data-idx="'+idx+'"]');
+              const editDiv = listDiv.querySelector('.profile-notes-edit[data-idx="'+idx+'"]');
+              if (viewDiv && editDiv) {
+                viewDiv.style.display = 'none';
+                editDiv.style.display = '';
+                const textarea = editDiv.querySelector('.profile-notes-textarea');
+                if (textarea) textarea.focus();
+              }
+            };
+          });
+          listDiv.querySelectorAll('.profile-notes-cancel').forEach((btn, i) => {
+            btn.onclick = function() {
+              const idx = btn.getAttribute('data-idx');
+              const viewDiv = listDiv.querySelector('.profile-notes-view[data-idx="'+idx+'"]');
+              const editDiv = listDiv.querySelector('.profile-notes-edit[data-idx="'+idx+'"]');
+              if (viewDiv && editDiv) {
+                editDiv.style.display = 'none';
+                viewDiv.style.display = '';
+              }
+            };
+          });
+          listDiv.querySelectorAll('.profile-notes-save').forEach((btn, i) => {
+            btn.onclick = async function() {
+              const idx = btn.getAttribute('data-idx');
+              const editDiv = listDiv.querySelector('.profile-notes-edit[data-idx="'+idx+'"]');
+              const textarea = editDiv ? editDiv.querySelector('.profile-notes-textarea') : null;
+              if (!textarea) return;
+              const newNotes = textarea.value.trim();
+              const profile = filteredProfiles[idx];
+              btn.disabled = true;
+              btn.innerText = 'Saving...';
+              try {
+                const resp = await fetch(`http://127.0.0.1:8000/profiles/${profile.id}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ notes: newNotes })
+                });
+                if (resp.ok) {
+                  profile.notes = newNotes;
+                  const viewDiv = listDiv.querySelector('.profile-notes-view[data-idx="'+idx+'"]');
+                  const editDiv = listDiv.querySelector('.profile-notes-edit[data-idx="'+idx+'"]');
+                  if (viewDiv && editDiv) {
+                    let notesHtml;
+                    if (newNotes) {
+                      notesHtml = `<b>Notes:</b> ${newNotes.replace(/\n/g, '<br>')}`;
+                    } else {
+                      notesHtml = `<b>Notes:</b> <span style='color:#888'>(No notes added)</span>`;
+                    }
+                    viewDiv.innerHTML = `${notesHtml} <button class=\"profile-notes-edit-btn\" data-idx=\"${idx}\" style=\"margin-left:8px;font-size:12px;padding:1px 7px 1px 7px;border-radius:5px;border:none;background:#eee;color:#0073b1;cursor:pointer;\">Edit</button>`;
+                    editDiv.style.display = 'none';
+                    viewDiv.style.display = '';
+                    const editBtn = viewDiv.querySelector('.profile-notes-edit-btn');
+                    if (editBtn) {
+                      editBtn.onclick = function() {
+                        viewDiv.style.display = 'none';
+                        editDiv.style.display = '';
+                        const textarea = editDiv.querySelector('.profile-notes-textarea');
+                        if (textarea) textarea.focus();
+                      };
+                    }
+                  }
+                  btn.disabled = false;
+                  btn.innerText = 'Save';
+                } else {
+                  btn.innerText = 'Failed!';
+                  setTimeout(() => { btn.innerText = 'Save'; btn.disabled = false; }, 1200);
+                }
+              } catch {
+                btn.innerText = 'Failed!';
+                setTimeout(() => { btn.innerText = 'Save'; btn.disabled = false; }, 1200);
+              }
+            };
+          });
         }
+        // Initial render and on input
+        renderFilteredProfiles();
+        searchBar.oninput = renderFilteredProfiles;
         // Update saved profiles count
         const savedHeading = document.getElementById('profile-saver-popup-saved-heading');
         if (savedHeading) {
-          savedHeading.textContent = `Saved Profiles (${profiles.length})`;
+          savedHeading.textContent = `Saved Profiles (${filteredProfiles.length})`;
         }
       })
       .catch(err => {
@@ -313,13 +489,11 @@
   }
 
   // --- In-page Popup Implementation ---
-  function togglePopup() {
+  function renderProfileSaverPopup(profiles) {
+    // Remove existing popup if present
     let popup = document.getElementById('profile-saver-popup');
-    if (popup) {
-      popup.style.display = popup.style.display === 'block' ? 'none' : 'block';
-      if (popup.style.display === 'block') fetchAndRenderPopupProfiles();
-      return;
-    }
+    if (popup) popup.remove();
+
     popup = document.createElement('div');
     popup.id = 'profile-saver-popup';
     popup.style.position = 'fixed';
@@ -338,6 +512,7 @@
     popup.style.display = 'block';
     popup.style.transition = 'opacity 0.2s';
 
+    // Close button
     const closeBtn = document.createElement('span');
     closeBtn.innerHTML = '&times;';
     closeBtn.style.position = 'absolute';
@@ -350,13 +525,12 @@
     closeBtn.onclick = () => { popup.style.display = 'none'; };
     popup.appendChild(closeBtn);
 
-    // --- Logo and Heading at Top ---
+    // Logo and Heading
     const logoHeaderDiv = document.createElement('div');
     logoHeaderDiv.style.display = 'flex';
     logoHeaderDiv.style.alignItems = 'center';
     logoHeaderDiv.style.marginBottom = '10px';
     const logoImg = document.createElement('img');
-    // Defensive: wrap chrome.runtime.getURL in try/catch in case context is lost
     try {
       if (window.chrome && chrome.runtime && chrome.runtime.getURL) {
         logoImg.src = chrome.runtime.getURL('assets/TS_logo.jpg');
@@ -364,7 +538,6 @@
         throw new Error('No chrome.runtime.getURL');
       }
     } catch (e) {
-      // fallback: blank image or placeholder SVG
       logoImg.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="100%" height="100%" fill="#ccc"/></svg>';
     }
     logoImg.style.width = '32px';
@@ -382,30 +555,17 @@
     logoHeaderDiv.appendChild(logoTitle);
     popup.appendChild(logoHeaderDiv);
 
-    // --- Add card hover effects with a <style> tag if not already present ---
-    if (!document.getElementById('profile-saver-card-hover-style')) {
-      const style = document.createElement('style');
-      style.id = 'profile-saver-card-hover-style';
-      style.textContent = `
-        .profile-saver-card, .profile-saver-current-card {
-          transition: box-shadow 0.18s, border-color 0.18s, background 0.18s;
-        }
-        .profile-saver-card:hover, .profile-saver-card:focus {
-          box-shadow: 0 4px 18px #0073b13a, 0 1.5px 0 #0073b1;
-          border-color: #0073b1;
-          background: #eaf5fb;
-        }
-        .profile-saver-current-card:hover, .profile-saver-current-card:focus {
-          box-shadow: 0 4px 18px #0073b13a, 0 1.5px 0 #0073b1;
-          border-color: #0073b1 !important;
-          background: #eaf5fb !important;
-        }
-      `;
-      document.head.appendChild(style);
-    }
-
     // --- Current Profile Section ---
     const currentProfile = extractProfile();
+    let isAlreadySaved = false;
+    let savedNotes = '';
+    if (Array.isArray(profiles) && currentProfile && currentProfile.url) {
+      const match = profiles.find(p => p.url === currentProfile.url);
+      if (match) {
+        isAlreadySaved = true;
+        savedNotes = match.notes || '';
+      }
+    }
     const currentDiv = document.createElement('div');
     currentDiv.className = 'profile-saver-current-card';
     currentDiv.style.background = '#f3f6f8';
@@ -413,7 +573,7 @@
     currentDiv.style.borderRadius = '16px';
     currentDiv.style.boxShadow = '0 2px 8px #0001';
     currentDiv.style.padding = '16px 18px 16px 18px';
-    currentDiv.style.marginBottom = '10px';
+    currentDiv.style.marginBottom = '8px'; // Reduce space below card
     currentDiv.style.display = 'block';
     currentDiv.style.position = 'relative';
     currentDiv.tabIndex = 0;
@@ -444,64 +604,73 @@
     profileRow.appendChild(avatar);
     profileRow.appendChild(detailsDiv);
     currentDiv.appendChild(profileRow);
-
     popup.appendChild(currentDiv);
 
-    // Save button below the card, full width, centered, LinkedIn blue, hover effect
-    const saveBtn = document.createElement('button');
-    saveBtn.id = 'profile-saver-save-btn';
-    saveBtn.innerText = 'Save';
-    saveBtn.style.display = 'block';
-    saveBtn.style.width = '100%';
-    saveBtn.style.margin = '18px 0 0 0';
-    saveBtn.style.background = '#0a66c2';
-    saveBtn.style.color = '#fff';
-    saveBtn.style.border = 'none';
-    saveBtn.style.borderRadius = '12px';
-    saveBtn.style.padding = '10px 0';
-    saveBtn.style.fontWeight = 'bold';
-    saveBtn.style.fontSize = '19px';
-    saveBtn.style.cursor = 'pointer';
-    saveBtn.style.boxShadow = '0 2px 8px #0073b133';
-    saveBtn.onmouseover = function() { this.style.background = '#004182'; };
-    saveBtn.onmouseout = function() { this.style.background = '#0a66c2'; };
+    // --- Add space between card and notes ---
+    const spaceDiv1 = document.createElement('div');
+    spaceDiv1.style.height = '4px'; // Reduce space between card and notes
+    popup.appendChild(spaceDiv1);
 
-    // Notes textarea below Save button
+    // Notes textarea
     const notesInput = document.createElement('textarea');
     notesInput.id = 'profile-saver-notes';
     notesInput.placeholder = 'Add notes (optional)';
     notesInput.style.width = '98%';
     notesInput.style.minHeight = '48px';
     notesInput.style.resize = 'vertical';
-    notesInput.style.margin = '12px 0 0 0';
+    notesInput.style.margin = '0 0 6px 0'; // Reduce space below textarea
     notesInput.style.padding = '6px 10px';
     notesInput.style.borderRadius = '8px';
     notesInput.style.border = '1px solid #d1d1d1';
     notesInput.style.fontSize = '15px';
+    notesInput.value = savedNotes;
+    popup.appendChild(notesInput);
 
-    // Attach save logic
+    // --- Add space between notes and button ---
+    const spaceDiv2 = document.createElement('div');
+    spaceDiv2.style.height = '2px'; // Reduce space between notes and button
+    popup.appendChild(spaceDiv2);
+
+    // Save/Update button below the notes
+    const saveBtn = document.createElement('button');
+    saveBtn.id = 'profile-saver-save-btn';
+    saveBtn.innerText = isAlreadySaved ? 'Update' : 'Save';
+    saveBtn.style.display = 'block';
+    saveBtn.style.width = '100%';
+    saveBtn.style.margin = '0 0 10px 0'; // Reduce space below button
+    saveBtn.style.background = '#0a66c2';
+    saveBtn.style.color = '#fff';
+    saveBtn.style.border = 'none';
+    saveBtn.style.borderRadius = '12px';
+    saveBtn.style.padding = '10px 0';
+    saveBtn.style.fontWeight = '600';
+    saveBtn.style.fontSize = '17px';
+    saveBtn.style.cursor = 'pointer';
+    saveBtn.style.boxShadow = '0 2px 8px #0073b133';
+    saveBtn.onmouseover = function() { this.style.background = '#004182'; };
+    saveBtn.onmouseout = function() { this.style.background = '#0a66c2'; };
+
     saveBtn.onclick = function() {
-      // Extract profile and save
       const profile = extractProfile();
       if (profile && profile.name) {
         const notes = notesInput.value.trim();
         profile.notes = notes;
-        saveBtn.innerText = 'Saving...';
+        saveBtn.innerText = isAlreadySaved ? 'Updating...' : 'Saving...';
         saveBtn.disabled = true;
         chrome.runtime.sendMessage({ type: 'save_profile', profile }, function(response) {
           if (response && response.success) {
-            saveBtn.innerText = 'Saved!';
+            saveBtn.innerText = isAlreadySaved ? 'Updated!' : 'Saved!';
             notesInput.value = '';
-            fetchAndRenderPopupProfiles();
-            updateFloatingButtonCount();
-            setTimeout(() => {
-              saveBtn.innerText = 'Save';
-              saveBtn.disabled = false;
-            }, 1500);
+            fetch('http://127.0.0.1:8000/profiles')
+              .then(r => r.json())
+              .then(profiles => {
+                renderProfileSaverPopup(profiles);
+                updateFloatingButtonCount();
+              });
           } else {
             saveBtn.innerText = 'Error!';
             setTimeout(() => {
-              saveBtn.innerText = 'Save';
+              saveBtn.innerText = isAlreadySaved ? 'Update' : 'Save';
               saveBtn.disabled = false;
             }, 1500);
           }
@@ -509,32 +678,283 @@
       } else {
         saveBtn.innerText = 'No Profile!';
         setTimeout(() => {
-          saveBtn.innerText = 'Save';
+          saveBtn.innerText = isAlreadySaved ? 'Update' : 'Save';
           saveBtn.disabled = false;
         }, 1200);
       }
     };
-
-    popup.appendChild(notesInput);
     popup.appendChild(saveBtn);
 
-    // --- Saved Profiles Section ---
+    // Saved Profiles Section
     const savedHeading = document.createElement('div');
     savedHeading.id = 'profile-saver-popup-saved-heading';
-    savedHeading.style.fontSize = '18px';
+    savedHeading.style.fontSize = '19px';
     savedHeading.style.fontWeight = 'bold';
     savedHeading.style.color = '#0073b1';
-    savedHeading.style.margin = '18px 0 2px 0';
-    savedHeading.textContent = 'Saved Profiles (0)'; // Will be updated after fetch
+    savedHeading.style.margin = '12px 0 2px 0';
     popup.appendChild(savedHeading);
+
+    // --- Inline Search + Sort Icon Button ---
+    const searchSortRow = document.createElement('div');
+    searchSortRow.style.display = 'flex';
+    searchSortRow.style.alignItems = 'center';
+    searchSortRow.style.gap = '8px';
+    searchSortRow.style.margin = '6px 0 12px 0';
+
+    // Search bar (reduced width)
+    const searchBar = document.createElement('input');
+    searchBar.type = 'text';
+    searchBar.id = 'profile-saver-search';
+    searchBar.placeholder = 'Search by name, title, or location...';
+    searchBar.style.flex = '1';
+    searchBar.style.minWidth = '0';
+    searchBar.style.width = '0';
+    searchBar.style.maxWidth = '250px';
+    searchBar.style.padding = '7px 12px';
+    searchBar.style.fontSize = '15px';
+    searchBar.style.border = '1px solid #bbb';
+    searchBar.style.borderRadius = '7px';
+    searchBar.style.display = 'block';
+
+    // Sort icon button
+    const sortBtn = document.createElement('button');
+    sortBtn.id = 'profile-saver-sort-btn';
+    sortBtn.style.background = 'none';
+    sortBtn.style.border = 'none';
+    sortBtn.style.padding = '0 6px';
+    sortBtn.style.margin = '0';
+    sortBtn.style.display = 'flex';
+    sortBtn.style.alignItems = 'center';
+    sortBtn.style.cursor = 'pointer';
+    sortBtn.style.height = '38px';
+    sortBtn.style.width = '36px';
+    sortBtn.style.justifyContent = 'center';
+    sortBtn.style.transition = 'background 0.15s';
+    sortBtn.tabIndex = 0;
+    sortBtn.setAttribute('aria-label', 'Sort by name (A-Z)');
+    sortBtn.title = 'Sort by name (A-Z)';
+    sortBtn.onfocus = () => sortBtn.style.background = '#e7f3fa';
+    sortBtn.onblur = () => sortBtn.style.background = 'none';
+    sortBtn.onmouseover = () => sortBtn.style.background = '#e7f3fa';
+    sortBtn.onmouseout = () => sortBtn.style.background = 'none';
+
+    // SVG for A-Z sort (default)
+    function getSortSVG(order) {
+      if (order === 'az') {
+        return `<svg width="22" height="22" fill="none" xmlns="http://www.w3.org/2000/svg"><text x="4" y="16" font-size="13" font-family="Arial" fill="#222">A</text><text x="15" y="16" font-size="13" font-family="Arial" fill="#222">Z</text><path d="M7 7h8" stroke="#0073b1" stroke-width="2" stroke-linecap="round"/><path d="M11 5v2" stroke="#0073b1" stroke-width="2" stroke-linecap="round"/></svg>`;
+      } else {
+        return `<svg width="22" height="22" fill="none" xmlns="http://www.w3.org/2000/svg"><text x="4" y="16" font-size="13" font-family="Arial" fill="#222">A</text><text x="15" y="16" font-size="13" font-family="Arial" fill="#222">Z</text><path d="M7 15h8" stroke="#0073b1" stroke-width="2" stroke-linecap="round"/><path d="M11 15v2" stroke="#0073b1" stroke-width="2" stroke-linecap="round"/></svg>`;
+      }
+    }
+    let sortOrder = 'az';
+    sortBtn.innerHTML = getSortSVG(sortOrder);
+
+    sortBtn.onclick = function() {
+      sortOrder = sortOrder === 'az' ? 'za' : 'az';
+      sortBtn.innerHTML = getSortSVG(sortOrder);
+      sortBtn.setAttribute('aria-label', sortOrder === 'az' ? 'Sort by name (A-Z)' : 'Sort by name (Z-A)');
+      sortBtn.title = sortOrder === 'az' ? 'Sort by name (A-Z)' : 'Sort by name (Z-A)';
+      renderFilteredProfiles();
+    };
+
+    searchSortRow.appendChild(searchBar);
+    searchSortRow.appendChild(sortBtn);
+    popup.appendChild(searchSortRow);
 
     const listDiv = document.createElement('div');
     listDiv.id = 'profile-saver-list';
-    listDiv.style.marginTop = '8px';
+    listDiv.style.marginTop = '0';
     popup.appendChild(listDiv);
 
+    let filteredProfiles = profiles;
+    function renderFilteredProfiles() {
+      const q = searchBar.value.trim().toLowerCase();
+      if (q.length >= 2) {
+        filteredProfiles = profiles.filter(p =>
+          (p.name && p.name.toLowerCase().includes(q)) ||
+          (p.current_title && p.current_title.toLowerCase().includes(q)) ||
+          (p.location && p.location.toLowerCase().includes(q))
+        );
+      } else {
+        filteredProfiles = profiles;
+      }
+      // Sort by name
+      filteredProfiles = filteredProfiles.slice().sort((a, b) => {
+        const nameA = (a.name || '').toLowerCase();
+        const nameB = (b.name || '').toLowerCase();
+        if (sortOrder === 'az') return nameA.localeCompare(nameB);
+        else return nameB.localeCompare(nameA);
+      });
+      savedHeading.textContent = `Saved Profiles (${filteredProfiles.length})`;
+      if (filteredProfiles.length > 0) {
+        listDiv.innerHTML = `
+          <div style="margin-bottom:16px;font-size:15px;color:#222;">Below are all profiles saved from LinkedIn:</div>
+          <div style="margin-bottom:0;">
+            ${filteredProfiles.map((p, idx) => `
+              <div class="profile-saver-card" style="background:#f3f6f8;border:1px solid #e0e0e0;padding:10px 14px 10px 14px;border-radius:12px;margin-bottom:14px;display:flex;align-items:center;position:relative;">
+                <img src="${p.profile_pic ? p.profile_pic : 'https://ui-avatars.com/api/?name=' + encodeURIComponent(p.name||'P') }" style="width:46px;height:46px;border-radius:50%;margin-right:15px;object-fit:cover;">
+                <div style="flex:1;">
+                  <div style="font-weight:600;font-size:18px;">${p.name||''}</div>
+                  <div style="font-size:15px;color:#555;margin-bottom:2px;">${p.headline||''}</div>
+                  <div style="font-size:13px;color:#888;margin-bottom:2px;">${p.current_title||''}</div>
+                  <div style="font-size:13px;color:#888;">${p.location||''}</div>
+                  <div class="profile-notes-view" data-idx="${idx}" style="margin-top:4px;${p.notes ? '' : 'color:#888;'}">
+                    <b>Notes:</b> ${p.notes ? p.notes.replace(/\n/g, '<br>') : '<span style=\'color:#888\'>(No notes added)</span>'}
+                    <button class="profile-notes-edit-btn" data-idx="${idx}" style="margin-left:8px;font-size:12px;padding:1px 7px 1px 7px;border-radius:5px;border:none;background:#eee;color:#0073b1;cursor:pointer;">Edit</button>
+                  </div>
+                  <div class="profile-notes-edit" data-idx="${idx}" style="display:none;margin-top:4px;">
+                    <textarea class="profile-notes-textarea" style="width:98%;min-height:32px;resize:vertical;border-radius:5px;border:1px solid #bbb;font-size:14px;">${p.notes||''}</textarea>
+                    <button class="profile-notes-save" data-idx="${idx}" style="margin:4px 4px 0 0;">Save</button>
+                    <button class="profile-notes-cancel" data-idx="${idx}" style="margin:4px 0 0 0;">Cancel</button>
+                  </div>
+                </div>
+                <button class="profile-delete" aria-label="Delete" title="Delete" data-profile-id="${p.id}"
+                  style="position:absolute;top:6px;right:10px;background:none;border:none;color:#d32f2f;font-size:26px;cursor:pointer;margin:0;line-height:1;font-weight:bold;transition:color 0.2s;user-select:none;"
+                  onmouseover="this.style.color='#b71c1c'" onmouseout="this.style.color='#d32f2f'">
+                  &times;
+                </button>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } else {
+        listDiv.innerHTML = '<div style="text-align:center;font-size:16px;color:#888;margin:30px 0;">No results found.</div>';
+      }
+      // Re-attach handlers for filtered list
+      listDiv.querySelectorAll('.profile-delete').forEach((btn, i) => {
+        btn.onclick = async function(e) {
+          e.stopPropagation();
+          const id = filteredProfiles[i].id;
+          if (!id) return;
+          btn.disabled = true;
+          btn.innerText = '...';
+          try {
+            const resp = await fetch(`http://127.0.0.1:8000/profiles/${id}`, { method: 'DELETE' });
+            if (resp.ok) {
+              fetchAndRenderPopupProfiles();
+              updateFloatingButtonCount();
+            } else {
+              btn.innerText = '!';
+            }
+          } catch {
+            btn.innerText = '!';
+          }
+          setTimeout(() => { btn.innerText = '×'; btn.disabled = false; }, 1500);
+        };
+      });
+      listDiv.querySelectorAll('.profile-notes-edit-btn').forEach((btn, i) => {
+        btn.onclick = function() {
+          const idx = btn.getAttribute('data-idx');
+          const viewDiv = listDiv.querySelector('.profile-notes-view[data-idx="'+idx+'"]');
+          const editDiv = listDiv.querySelector('.profile-notes-edit[data-idx="'+idx+'"]');
+          if (viewDiv && editDiv) {
+            viewDiv.style.display = 'none';
+            editDiv.style.display = '';
+            const textarea = editDiv.querySelector('.profile-notes-textarea');
+            if (textarea) textarea.focus();
+          }
+        };
+      });
+      listDiv.querySelectorAll('.profile-notes-cancel').forEach((btn, i) => {
+        btn.onclick = function() {
+          const idx = btn.getAttribute('data-idx');
+          const viewDiv = listDiv.querySelector('.profile-notes-view[data-idx="'+idx+'"]');
+          const editDiv = listDiv.querySelector('.profile-notes-edit[data-idx="'+idx+'"]');
+          if (viewDiv && editDiv) {
+            editDiv.style.display = 'none';
+            viewDiv.style.display = '';
+          }
+        };
+      });
+      listDiv.querySelectorAll('.profile-notes-save').forEach((btn, i) => {
+        btn.onclick = async function() {
+          const idx = btn.getAttribute('data-idx');
+          const editDiv = listDiv.querySelector('.profile-notes-edit[data-idx="'+idx+'"]');
+          const textarea = editDiv ? editDiv.querySelector('.profile-notes-textarea') : null;
+          if (!textarea) return;
+          const newNotes = textarea.value.trim();
+          const profile = filteredProfiles[idx];
+          btn.disabled = true;
+          btn.innerText = 'Saving...';
+          try {
+            const resp = await fetch(`http://127.0.0.1:8000/profiles/${profile.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ notes: newNotes })
+            });
+            if (resp.ok) {
+              profile.notes = newNotes;
+              const viewDiv = listDiv.querySelector('.profile-notes-view[data-idx="'+idx+'"]');
+              const editDiv = listDiv.querySelector('.profile-notes-edit[data-idx="'+idx+'"]');
+              if (viewDiv && editDiv) {
+                let notesHtml;
+                if (newNotes) {
+                  notesHtml = `<b>Notes:</b> ${newNotes.replace(/\n/g, '<br>')}`;
+                } else {
+                  notesHtml = `<b>Notes:</b> <span style='color:#888'>(No notes added)</span>`;
+                }
+                viewDiv.innerHTML = `${notesHtml} <button class=\"profile-notes-edit-btn\" data-idx=\"${idx}\" style=\"margin-left:8px;font-size:12px;padding:1px 7px 1px 7px;border-radius:5px;border:none;background:#eee;color:#0073b1;cursor:pointer;\">Edit</button>`;
+                editDiv.style.display = 'none';
+                viewDiv.style.display = '';
+                const editBtn = viewDiv.querySelector('.profile-notes-edit-btn');
+                if (editBtn) {
+                  editBtn.onclick = function() {
+                    viewDiv.style.display = 'none';
+                    editDiv.style.display = '';
+                    const textarea = editDiv.querySelector('.profile-notes-textarea');
+                    if (textarea) textarea.focus();
+                  };
+                }
+              }
+              btn.disabled = false;
+              btn.innerText = 'Save';
+            } else {
+              btn.innerText = 'Failed!';
+              setTimeout(() => { btn.innerText = 'Save'; btn.disabled = false; }, 1200);
+            }
+          } catch {
+            btn.innerText = 'Failed!';
+            setTimeout(() => { btn.innerText = 'Save'; btn.disabled = false; }, 1200);
+          }
+        };
+      });
+    }
+    renderFilteredProfiles();
+    searchBar.oninput = renderFilteredProfiles;
     document.body.appendChild(popup);
-    fetchAndRenderPopupProfiles();
+  }
+
+  // Robust floating button handler: always fetch profiles, then render popup
+  function robustTogglePopup() {
+    fetch('http://127.0.0.1:8000/profiles')
+      .then(r => r.json())
+      .then(profiles => {
+        renderProfileSaverPopup(profiles);
+      })
+      .catch(() => {
+        // Fallback: show error popup
+        let popup = document.getElementById('profile-saver-popup');
+        if (popup) popup.remove();
+        popup = document.createElement('div');
+        popup.id = 'profile-saver-popup';
+        popup.style.position = 'fixed';
+        popup.style.top = '0';
+        popup.style.right = '0';
+        popup.style.height = '100vh';
+        popup.style.zIndex = '2147483647';
+        popup.style.background = '#fff';
+        popup.style.border = '1.5px solid #d1d1d1';
+        popup.style.boxShadow = '0 8px 32px rgba(0,0,0,0.12)';
+        popup.style.borderRadius = '18px';
+        popup.style.width = '410px';
+        popup.style.maxHeight = '96vh';
+        popup.style.overflowY = 'auto';
+        popup.style.padding = '18px 18px 18px 18px';
+        popup.style.display = 'block';
+        popup.style.transition = 'opacity 0.2s';
+        popup.innerHTML = '<div style="color:red;font-size:18px;margin:30px 0;">Error loading profiles. Please check your backend.</div>';
+        document.body.appendChild(popup);
+      });
   }
 
   function updateFloatingButtonCount() {
@@ -568,6 +988,69 @@
   } else {
     debug('chrome.runtime.onMessage is not available in this context');
   }
+
+  // Listen for browser navigation and profile changes to refresh popup
+  window.addEventListener('popstate', function() {
+    const popup = document.getElementById('profile-saver-popup');
+    if (popup) popup.remove();
+    setTimeout(() => {
+      // Re-inject popup only if floating button is present (user expects it open)
+      if (document.getElementById('profile-saver-float-btn')) {
+        robustTogglePopup();
+      }
+    }, 400);
+  });
+
+  // --- Robust navigation detection for LinkedIn SPA ---
+  (function(history) {
+    // Patch pushState
+    const origPushState = history.pushState;
+    history.pushState = function(state) {
+      const ret = origPushState.apply(history, arguments);
+      setTimeout(() => {
+        const popup = document.getElementById('profile-saver-popup');
+        if (popup) popup.remove();
+        setTimeout(() => {
+          if (document.getElementById('profile-saver-float-btn')) {
+            robustTogglePopup();
+          }
+        }, 400);
+      }, 0);
+      return ret;
+    };
+    // Patch replaceState
+    const origReplaceState = history.replaceState;
+    history.replaceState = function(state) {
+      const ret = origReplaceState.apply(history, arguments);
+      setTimeout(() => {
+        const popup = document.getElementById('profile-saver-popup');
+        if (popup) popup.remove();
+        setTimeout(() => {
+          if (document.getElementById('profile-saver-float-btn')) {
+            robustTogglePopup();
+          }
+        }, 400);
+      }, 0);
+      return ret;
+    };
+  })(window.history);
+
+  // --- Fallback: Observe location changes (for any missed SPA navigation) ---
+  let lastProfileUrl = window.location.href;
+  setInterval(() => {
+    if (window.location.href !== lastProfileUrl) {
+      lastProfileUrl = window.location.href;
+      const popup = document.getElementById('profile-saver-popup');
+      if (popup) {
+        popup.remove();
+        setTimeout(() => {
+          if (document.getElementById('profile-saver-float-btn')) {
+            robustTogglePopup();
+          }
+        }, 400);
+      }
+    }
+  }, 500);
 
   // --- Wait for DOM ready and inject buttons ---
   (function() {

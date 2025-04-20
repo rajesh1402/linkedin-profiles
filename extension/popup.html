@@ -16,6 +16,25 @@
     <div id="profile-saver-list"></div>
     <div id="profile-saver-empty" style="display:none;">No profiles saved yet.</div>
     <div id="profile-saver-error" style="display:none;color:red;">Error loading profiles.</div>
+    <template id="profile-card-template">
+      <div class="profile-card">
+        <img class="profile-avatar" src="" alt="Profile Picture">
+        <div class="profile-info">
+          <div class="profile-name"></div>
+          <div class="profile-headline"></div>
+          <div class="profile-title"></div>
+          <div class="profile-location"></div>
+          <div class="profile-about"></div>
+          <div class="profile-notes-view" style="display:none;"></div>
+          <div class="profile-notes-edit" style="display:none;">
+            <textarea class="profile-notes-textarea" rows="2" style="width:98%;resize:vertical;"></textarea>
+            <button class="profile-notes-save">Save</button>
+            <button class="profile-notes-cancel">Cancel</button>
+          </div>
+        </div>
+        <button class="profile-delete" aria-label="Delete" title="Delete">&times;</button>
+      </div>
+    </template>
   </div>
   <script src="popup.js"></script>
 </body>

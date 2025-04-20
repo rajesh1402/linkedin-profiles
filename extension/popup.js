@@ -14,36 +14,65 @@ function renderProfiles(profiles) {
     return;
   }
   document.getElementById('profile-saver-empty').style.display = 'none';
+  const template = document.getElementById('profile-card-template');
   profiles.forEach(profile => {
-    const card = document.createElement('div');
+    const card = template ? template.content.firstElementChild.cloneNode(true) : document.createElement('div');
     card.className = 'profile-card';
-    // Use chrome.runtime.getURL for fallback icon, but always resolve at render time for extension context
+    // Avatar
     let avatarUrl = profile.profile_pic && !profile.profile_pic.includes('ghost') && !profile.profile_pic.includes('default') ? profile.profile_pic : '';
     if (!avatarUrl) {
-      try {
-        avatarUrl = chrome.runtime.getURL('icon32.png');
-      } catch { avatarUrl = 'icon32.png'; }
+      try { avatarUrl = chrome.runtime.getURL('icon32.png'); } catch { avatarUrl = 'icon32.png'; }
     }
-    // Create avatar image via JS for CSP compliance
-    const avatarImg = document.createElement('img');
-    avatarImg.src = avatarUrl;
-    avatarImg.className = 'profile-avatar';
-    avatarImg.onerror = function() {
+    card.querySelector('.profile-avatar').src = avatarUrl;
+    card.querySelector('.profile-avatar').onerror = function() {
       this.onerror = null;
       this.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect width="100%" height="100%" fill="#ccc"/></svg>';
     };
-    card.appendChild(avatarImg);
-    card.innerHTML += `
-      <div class="profile-info">
-        <div class="profile-name">${profile.name}</div>
-        <div class="profile-headline">${profile.headline}</div>
-        <div class="profile-title">${profile.current_title}</div>
-        <div class="profile-location">${profile.location}</div>
-        ${profile.about ? `<div class="profile-about">${profile.about.replace(/\n/g, '<br>')}</div>` : ''}
-        ${profile.notes ? `<div class="profile-notes"><b>Notes:</b> ${profile.notes.replace(/\n/g, '<br>')}</div>` : ''}
-      </div>
-      <button class="profile-delete" aria-label="Delete" title="Delete">&times;</button>
-    `;
+    // Info
+    card.querySelector('.profile-name').textContent = profile.name;
+    card.querySelector('.profile-headline').textContent = profile.headline;
+    card.querySelector('.profile-title').textContent = profile.current_title;
+    card.querySelector('.profile-location').textContent = profile.location;
+    card.querySelector('.profile-about').innerHTML = profile.about ? profile.about.replace(/\n/g, '<br>') : '';
+    // Notes
+    const notesView = card.querySelector('.profile-notes-view');
+    const notesEdit = card.querySelector('.profile-notes-edit');
+    const notesTextarea = card.querySelector('.profile-notes-textarea');
+    function setViewMode() {
+      notesView.style.display = '';
+      notesEdit.style.display = 'none';
+      notesView.innerHTML = `<b>Notes:</b> ${profile.notes ? profile.notes.replace(/\n/g, '<br>') : '<span style=\'color:#888\'>(No notes added)</span>'}`;
+    }
+    function setEditMode() {
+      notesView.style.display = 'none';
+      notesEdit.style.display = '';
+      notesTextarea.value = profile.notes || '';
+      notesTextarea.focus();
+    }
+    setViewMode();
+    // Edit button
+    const editBtn = document.createElement('button');
+    editBtn.textContent = 'Edit';
+    editBtn.className = 'profile-notes-edit-btn';
+    editBtn.onclick = () => setEditMode();
+    notesView.appendChild(editBtn);
+    // Save/Cancel handlers
+    notesEdit.querySelector('.profile-notes-save').onclick = () => {
+      const newNotes = notesTextarea.value.trim();
+      fetch(`${API_URL}/${profile.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: newNotes })
+      })
+      .then(r => r.ok ? r.json() : Promise.reject(r))
+      .then(() => {
+        profile.notes = newNotes;
+        setViewMode();
+      })
+      .catch(() => alert('Failed to update notes.'));
+    };
+    notesEdit.querySelector('.profile-notes-cancel').onclick = setViewMode;
+    // Delete
     card.querySelector('.profile-delete').onclick = () => deleteProfile(profile.id);
     list.appendChild(card);
   });

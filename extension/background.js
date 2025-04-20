@@ -10,25 +10,55 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   try {
     if (msg.type === 'save_profile') {
       debug('Saving profile to backend', msg.profile);
-      fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(msg.profile)
-      })
+      // PATCH if profile exists (by URL), otherwise POST
+      fetch(API_URL.replace('/profiles','/profiles/by_url') + '?url=' + encodeURIComponent(msg.profile.url))
         .then(async r => {
-          debug('POST response', r.status);
           if (r.ok) {
-            try { chrome.runtime.sendMessage({ type: 'update_count' }); } catch (e) { debug('No receiving end for update_count', e); }
-            sendResponse({ success: true });
+            const existing = await r.json();
+            fetch(API_URL + '/' + existing.id, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ notes: msg.profile.notes })
+            })
+              .then(async r => {
+                debug('PATCH response', r.status);
+                if (r.ok) {
+                  try { chrome.runtime.sendMessage({ type: 'update_count' }); } catch (e) { debug('No receiving end for update_count', e); }
+                  sendResponse({ success: true });
+                } else {
+                  sendResponse({ success: false });
+                }
+              })
+              .catch(err => {
+                debug('PATCH error', err);
+                sendResponse({ success: false });
+              });
           } else {
-            sendResponse({ success: false });
+            // Profile does not exist, POST
+            fetch(API_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(msg.profile)
+            })
+              .then(async r => {
+                debug('POST response', r.status);
+                if (r.ok) {
+                  try { chrome.runtime.sendMessage({ type: 'update_count' }); } catch (e) { debug('No receiving end for update_count', e); }
+                  sendResponse({ success: true });
+                } else {
+                  sendResponse({ success: false });
+                }
+              })
+              .catch(err => {
+                debug('POST error', err);
+                sendResponse({ success: false });
+              });
           }
         })
         .catch(err => {
-          debug('POST error', err);
+          debug('Fetch existing profile error', err);
           sendResponse({ success: false });
         });
-      return true;
     } else if (msg.type === 'get_count') {
       debug('Fetching profile count');
       fetch(API_URL)
@@ -41,15 +71,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           debug('Count fetch error', err);
           sendResponse({ count: 0 });
         });
-      return true;
     } else if (msg.type === 'show_popup') {
       debug('Show popup requested');
       try { chrome.action.openPopup(); } catch (e) { debug('No receiving end for openPopup', e); }
     }
-    // Always return true for async sendResponse
-    return true;
   } catch (e) {
     debug('Error handling message in background.js', e);
-    return true;
   }
+  // Always return true to keep the message channel open for async sendResponse
+  return true;
 });

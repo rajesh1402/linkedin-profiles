@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response, Body
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from starlette.responses import JSONResponse
@@ -47,6 +47,14 @@ def read_profiles(request: Request):
     db: Session = request.state.db
     return crud.get_profiles(db)
 
+@app.get("/profiles/by_url", response_model=schemas.Profile)
+def get_profile_by_url(url: str, request: Request):
+    db: Session = request.state.db
+    db_profile = crud.get_profile_by_url(db, url=url)
+    if db_profile is None:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return db_profile
+
 @app.delete("/profiles/{profile_id}", response_model=schemas.Profile)
 def delete_profile(profile_id: int, request: Request):
     db: Session = request.state.db
@@ -54,3 +62,15 @@ def delete_profile(profile_id: int, request: Request):
     if db_profile is None:
         raise HTTPException(status_code=404, detail="Profile not found")
     return crud.delete_profile(db=db, profile_id=profile_id)
+
+@app.patch("/profiles/{profile_id}", response_model=schemas.Profile)
+def update_profile(profile_id: int, data: schemas.ProfileUpdate = Body(...), request: Request = None):
+    db: Session = request.state.db
+    db_profile = crud.get_profile(db, profile_id=profile_id)
+    if db_profile is None:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    # Only update notes if provided
+    notes = data.notes
+    if notes is not None:
+        db_profile = crud.update_profile_notes(db, profile_id, notes)
+    return db_profile

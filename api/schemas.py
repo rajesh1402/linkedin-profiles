@@ -13,6 +13,9 @@ class ProfileBase(BaseModel):
 class ProfileCreate(ProfileBase):
     pass
 
+class ProfileUpdate(BaseModel):
+    notes: str | None = None
+
 class Profile(ProfileBase):
     id: int
 
