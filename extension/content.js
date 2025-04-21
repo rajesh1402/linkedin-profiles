@@ -60,6 +60,7 @@
     floatImg.style.verticalAlign = 'middle';
     floatImg.style.marginRight = '8px';
     floatImg.style.objectFit = 'contain';
+    floatImg.style.objectFit = 'contain';
     floatImg.onerror = function() {
       this.onerror = null;
       this.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><rect width="100%" height="100%" fill="#ccc"/></svg>';
@@ -111,60 +112,51 @@
     }
   }
 
-  // --- About Section Extraction (Modern LinkedIn DOM) ---
-  function extractAboutSection() {
-    // 1. Find all <section> elements
-    const sections = document.querySelectorAll('section');
-    for (let section of sections) {
-      // 2. Find <h2> with a <span aria-hidden="true">About</span>
-      const h2s = section.querySelectorAll('h2');
-      for (let h2 of h2s) {
-        const aboutSpan = h2.querySelector('span[aria-hidden="true"]');
-        if (
-          aboutSpan &&
-          aboutSpan.textContent.trim().toLowerCase() === 'about'
-        ) {
-          // 3. Try expanded first, then collapsed
-          let expandedDiv = section.querySelector('div.inline-show-more-text--is-expanded');
-          if (!expandedDiv) {
-            expandedDiv = section.querySelector('div.inline-show-more-text--is-collapsed');
-          }
-          if (expandedDiv) {
-            const span = expandedDiv.querySelector('span[aria-hidden="true"]');
-            if (span) {
-              let aboutHtml = span.innerHTML;
-              let aboutText = aboutHtml.replace(/<br\s*\/?>(\n)?/gi, '\n');
-              aboutText = aboutText.replace(/<[^>]+>/g, '').trim();
-              return aboutText;
-            }
-          }
-        }
-      }
-    }
-    return null;
-  }
-
   // Extract profile info from DOM (robust for experience/current_title and profile_pic)
   function extractProfile() {
     const name = document.querySelector('h1.inline.t-24.v-align-middle.break-words')?.innerText.trim() || document.querySelector('h1')?.innerText.trim() || '';
     const headline = document.querySelector('.text-body-medium.break-words')?.innerText.trim() || '';
     const url = window.location.href;
     const location = document.querySelector('.text-body-small.inline.t-black--light.break-words')?.innerText.trim() || '';
-    
+
     // Robust current_title extraction (first experience title)
     let currentTitle = '';
-    const expSection = document.querySelector('section.pv-profile-section.experience-section') || document.querySelector('section[data-section="experience-section"]');
+
+    // 1. Find all Experience-like sections (robust: look for h2 with 'Experience')
+    const sections = Array.from(document.querySelectorAll('section, div'));
+    let expSection = null;
+    for (const section of sections) {
+      const h2 = section.querySelector('h2, .pvs-header__title');
+      if (h2 && h2.textContent && h2.textContent.toLowerCase().includes('experience')) {
+        expSection = section;
+        break;
+      }
+    }
+
+    // 2. Search for the first plausible job title ONLY inside Experience section
     if (expSection) {
-      const firstExp = expSection.querySelector('.pv-position-entity .t-16.t-black.t-bold') || expSection.querySelector('.t-14.t-black.t-bold');
+      let firstExp = expSection.querySelector('.pv-position-entity .t-16.t-black.t-bold') ||
+                     expSection.querySelector('.t-14.t-black.t-bold') ||
+                     expSection.querySelector('.mr1.hoverable-link-text.t-bold span[aria-hidden="true"]');
+      if (!firstExp) {
+        // Try direct child <li> with plausible job title
+        const li = expSection.querySelector('li');
+        if (li) {
+          const span = li.querySelector('.mr1.hoverable-link-text.t-bold span[aria-hidden="true"]');
+          if (span) firstExp = span;
+        }
+      }
       if (firstExp) currentTitle = firstExp.innerText.trim();
     }
+
+    // 3. Fallback: headline (least preferred)
     if (!currentTitle) {
-      // Try summary card current position
-      const pos = document.querySelector('.text-body-medium.break-words')?.innerText.trim();
-      if (pos) currentTitle = pos;
+      const pos = document.querySelector('.text-body-medium.break-words');
+      if (pos) currentTitle = pos.innerText.trim();
     }
+
     // --- Finalized About extraction for new LinkedIn DOM ---
-    const aboutText = extractAboutSection();
+    const aboutText = window.extractAboutSection();
     let profilePic = '';
     // Try legacy selectors first
     let mainImg = document.querySelector('.pv-top-card-profile-picture__image');

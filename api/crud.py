@@ -33,3 +33,38 @@ def update_profile_notes(db: Session, profile_id: int, notes: str):
     db.commit()
     db.refresh(profile)
     return profile
+
+# --- Company CRUD ---
+def get_company_by_url(db, url: str):
+    return db.query(models.Company).filter(models.Company.linkedin_url == url).first()
+
+def get_companies(db):
+    return db.query(models.Company).all()
+
+def get_company(db, company_id: int):
+    return db.query(models.Company).filter(models.Company.id == company_id).first()
+
+def create_company(db, company: schemas.CompanyCreate):
+    db_company = models.Company(**company.dict())
+    db.add(db_company)
+    db.commit()
+    db.refresh(db_company)
+    return db_company
+
+def update_company(db, company_id: int, company_data: dict):
+    db_company = get_company(db, company_id)
+    if not db_company:
+        return None
+    for k, v in company_data.items():
+        setattr(db_company, k, v)
+    db.commit()
+    db.refresh(db_company)
+    return db_company
+
+def delete_company(db, company_id: int):
+    db_company = get_company(db, company_id)
+    if not db_company:
+        return None
+    db.delete(db_company)
+    db.commit()
+    return db_company
