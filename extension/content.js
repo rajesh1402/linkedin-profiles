@@ -243,8 +243,13 @@
         const listDiv = document.getElementById('profile-saver-list');
         if (!listDiv) return;
 
+        // Remove any existing search/sort rows before adding a new one
+        const prevSearchSortRows = listDiv.parentNode.querySelectorAll('.profile-saver-search-sort-row');
+        prevSearchSortRows.forEach(row => row.remove());
+
         // --- Inline Search + Sort Icon Button ---
         const searchSortRow = document.createElement('div');
+        searchSortRow.className = 'profile-saver-search-sort-row';
         searchSortRow.style.display = 'flex';
         searchSortRow.style.alignItems = 'center';
         searchSortRow.style.gap = '8px';
@@ -436,7 +441,7 @@
                     } else {
                       notesHtml = `<b>Notes:</b> <span style='color:#888'>(No notes added)</span>`;
                     }
-                    viewDiv.innerHTML = `${notesHtml} <button class=\"profile-notes-edit-btn\" data-idx=\"${idx}\" style=\"margin-left:8px;font-size:12px;padding:1px 7px 1px 7px;border-radius:5px;border:none;background:#eee;color:#0073b1;cursor:pointer;\">Edit</button>`;
+                    viewDiv.innerHTML = `${notesHtml} <button class="profile-notes-edit-btn" data-idx="${idx}" style="margin-left:8px;font-size:12px;padding:1px 7px 1px 7px;border-radius:5px;border:none;background:#eee;color:#0073b1;cursor:pointer;">Edit</button>`;
                     editDiv.style.display = 'none';
                     viewDiv.style.display = '';
                     const editBtn = viewDiv.querySelector('.profile-notes-edit-btn');
@@ -688,6 +693,7 @@
 
     // --- Inline Search + Sort Icon Button ---
     const searchSortRow = document.createElement('div');
+    searchSortRow.className = 'profile-saver-search-sort-row';
     searchSortRow.style.display = 'flex';
     searchSortRow.style.alignItems = 'center';
     searchSortRow.style.gap = '8px';
@@ -885,7 +891,7 @@
                 } else {
                   notesHtml = `<b>Notes:</b> <span style='color:#888'>(No notes added)</span>`;
                 }
-                viewDiv.innerHTML = `${notesHtml} <button class=\"profile-notes-edit-btn\" data-idx=\"${idx}\" style=\"margin-left:8px;font-size:12px;padding:1px 7px 1px 7px;border-radius:5px;border:none;background:#eee;color:#0073b1;cursor:pointer;\">Edit</button>`;
+                viewDiv.innerHTML = `${notesHtml} <button class="profile-notes-edit-btn" data-idx="${idx}" style="margin-left:8px;font-size:12px;padding:1px 7px 1px 7px;border-radius:5px;border:none;background:#eee;color:#0073b1;cursor:pointer;">Edit</button>`;
                 editDiv.style.display = 'none';
                 viewDiv.style.display = '';
                 const editBtn = viewDiv.querySelector('.profile-notes-edit-btn');
